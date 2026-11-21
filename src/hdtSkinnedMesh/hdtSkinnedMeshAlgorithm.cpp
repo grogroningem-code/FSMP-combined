@@ -441,9 +441,10 @@ namespace hdt
 			if (c->weight < FLT_EPSILON)
 				continue;
 
-			if (!body1->canCollideWith(body0->m_skinnedBones[i].ptr))
+			const bool worldPair = body0->m_isWorldCollider || body1->m_isWorldCollider;  // Flobrim fork
+			if (!worldPair && !body1->canCollideWith(body0->m_skinnedBones[i].ptr))
 				continue;
-			if (!body0->canCollideWith(body1->m_skinnedBones[j].ptr))
+			if (!worldPair && !body0->canCollideWith(body1->m_skinnedBones[j].ptr))
 				continue;
 			if (body0->m_skinnedBones[i].isKinematic && body1->m_skinnedBones[j].isKinematic)
 				continue;
@@ -473,6 +474,8 @@ namespace hdt
 			newPt.m_positionWorldOnA = worldA;
 			newPt.m_positionWorldOnB = worldB;
 			newPt.m_combinedFriction = rb0->m_rig.getFriction() * rb1->m_rig.getFriction();
+			if (worldPair)  // Flobrim fork: the world collider's friction applies as is
+				newPt.m_combinedFriction = body0->m_isWorldCollider ? rb0->m_rig.getFriction() : rb1->m_rig.getFriction();
 			newPt.m_combinedRestitution = rb0->m_rig.getRestitution() * rb1->m_rig.getRestitution();
 			newPt.m_combinedRollingFriction = rb0->m_rig.getRollingFriction() * rb1->m_rig.getRollingFriction();
 

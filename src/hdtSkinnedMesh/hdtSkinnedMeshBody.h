@@ -75,6 +75,8 @@ namespace hdt
 		//		int m_priority;
 		bool m_isKinematic;
 		bool m_useBoundingSphere;
+		// Flobrim fork: static world collider (hdtWorldCollider.h). Bypasses tag/shared filtering.
+		bool m_isWorldCollider = false;
 		RE::BSTSmartPointer<SkinnedMeshShape> m_shape;
 
 		int addBone(SkinnedMeshBone* bone, const btQsTransform& verticesToBone, const BoundingSphere& boundingSphere);

@@ -1,4 +1,5 @@
 #pragma once
+#include "WorldCollisionAPI.h"
 
 #include "hdtConvertNi.h"
 #include "hdtDefaultBBP.h"
@@ -213,6 +214,10 @@ namespace hdt
 		RE::BSTSmartPointer<SkyrimBody> readPerVertexShape(DefaultBBP::NameMap_t meshNameMap);
 		RE::BSTSmartPointer<SkyrimBody> readPerTriangleShape(DefaultBBP::NameMap_t* meshNameMap);
 		RE::BSTSmartPointer<Generic6DofConstraint> readGenericConstraint();
+		// Flobrim fork: constraint from a filled template (body of readGenericConstraint, shared with the seat hug)
+		RE::BSTSmartPointer<Generic6DofConstraint> buildGenericConstraint(SkyrimBone* bodyA, SkyrimBone* bodyB, const GenericConstraintTemplate& cinfo);
+		// Flobrim fork: generic seated hug (hdtSeatHug.cpp); runs in the reference pose, returns constraints added
+		std::uint32_t addSeatHug(const world::HugParams& params, std::string& report);
 		RE::BSTSmartPointer<StiffSpringConstraint> readStiffSpringConstraint();
 		RE::BSTSmartPointer<ConeTwistConstraint> readConeTwistConstraint();
 		RE::BSTSmartPointer<ConstraintGroup> readConstraintGroup();

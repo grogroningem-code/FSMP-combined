@@ -1,4 +1,5 @@
 #include "PluginInterfaceImpl.h"
+#include "hdtWorldCollider.h"
 
 hdt::PluginInterfaceImpl hdt::g_pluginInterface;
 
@@ -35,6 +36,11 @@ void hdt::PluginInterfaceImpl::onPostPostLoad()
 	// Send ourselves to any plugin that registered during the PostLoad event
 	if (m_skseMessagingInterface) {
 		m_skseMessagingInterface->Dispatch(PluginInterface::MSG_STARTUP, static_cast<PluginInterface*>(this), 0, nullptr);
+
+		// Flobrim fork: world-collision interface (WorldCollisionAPI.h)
+		m_skseMessagingInterface->Dispatch(world::MSG_WORLD_COLLISION_INTERFACE,
+			static_cast<world::IWorldCollision*>(WorldColliderManager::get()), sizeof(void*), nullptr);
+		logger::info("[world] world-collision interface v{} dispatched", world::IWorldCollision::VERSION);
 	}
 }
 

@@ -1,3 +1,19 @@
+# Settle build of Faster HDT-SMP
+
+This is a modified version of [Faster HDT-SMP](https://github.com/DaymareOn/hdtSMP64) 4.1.1 (commit e52ad96), used by
+[Settle - Seat Collision for SMP Cloth](https://github.com/Flob26/Settle). Modified by Flob26, November 2026.
+
+Changes (see the commit history of branch `flobrim-world-collision` for details):
+- New world-collision plugin interface (`src/WorldCollisionAPI.h`, `src/hdtWorldCollider.*`): other SKSE plugins can register
+  triangle meshes (e.g. furniture seats) as kinematic collision bodies for SMP cloth.
+- Seated hug (`src/hdtSeatHug.*`): while an actor sits, lower skirt cloth bones can be tied to the legs.
+- Small hooks in `src/CMakeLists.txt`, `src/PluginInterfaceImpl.cpp`, `src/hdtSkyrimBody.cpp`, `src/hdtSkyrimSystem.*`,
+  `src/hdtSkinnedMesh/hdtSkinnedMeshAlgorithm.cpp`, `src/hdtSkinnedMesh/hdtSkinnedMeshBody.h`.
+
+Licensed like the original: GPL-3.0 with the exceptions in `EXCEPTIONS`. All credit for Faster HDT-SMP goes to DaymareOn and its contributors.
+
+---
+
 # Faster HDT-SMP (FSMP)
 
 Skinned-mesh physics for Skyrim **SE / AE / VR** — the actively-maintained continuation of HDT-SMP.

@@ -1,4 +1,5 @@
 #include "hdtSkyrimSystem.h"
+#include "hdtSeatHug.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshShape.h"
 
 #include "HavokUtils.h"
@@ -6,6 +7,9 @@
 #include "Patterns/hdtXmlPatternExpander.h"
 #include "XmlReader.h"
 #include "hdtSkyrimPhysicsWorld.h"
+
+#include <algorithm>
+#include <cctype>
 
 // F16C isn't supported on super old processors. AVX2+ (AVX processors can have it, but not guaranteed)
 #if defined(__AVX2__) || defined(__AVX512F__)
@@ -385,6 +389,44 @@ namespace hdt
 		if (m_reader->GetErrorCode() != Xml::ErrorCode::None) {
 			logger::error("xml parse error - {}", m_reader->GetErrorMessage());
 			return nullptr;
+		}
+
+		// Flobrim fork: generic seated hug, added while the skeleton is still in the reference pose
+		if (auto* owner = m_skeleton ? m_skeleton->GetUserData() : nullptr) {
+			world::HugParams hug;
+			if (seathug::lookup(owner->formID, m_filePath, hug)) {
+				// ground planes (VirtualGround, tag "ground") follow NPC Root; while riding that is at the saddle
+				std::uint32_t grounds = 0;
+				if (hug.groundOff > 0.f) {
+					for (auto& mesh : m_mesh->m_meshes) {
+						auto body = static_cast<SkyrimBody*>(mesh.get());
+						if (!body)
+							continue;
+						bool ground = false;
+						for (auto& t : body->m_tags) {
+							std::string tag = t.c_str();
+							std::transform(tag.begin(), tag.end(), tag.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+							if (tag == "ground")
+								ground = true;
+						}
+						std::string name = body->m_name.c_str();
+						std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+						if (name.find("virtualground") != std::string::npos)
+							ground = true;
+						if (ground) {
+							body->m_disabled = true;
+							++grounds;
+						}
+					}
+				}
+				std::string report;
+				auto n = addSeatHug(hug, report);
+				if (grounds) {
+					report = fmt::format("{} ground plane(s) off; {}", grounds, report);
+					n += grounds;  // so the item is rebuilt (ground back on) when the hug is turned off
+				}
+				seathug::noteBuilt(owner->formID, m_filePath, n, std::move(report));
+			}
 		}
 
 		m_mesh->m_skeleton = hdt::make_nismart(m_skeleton);
@@ -1247,11 +1289,16 @@ namespace hdt
 		if (!findBones(bodyAName, bodyBName, bodyA, bodyB))
 			return nullptr;
 
+		auto cinfo = getGenericConstraintTemplate(clsname);
+		readGenericConstraintTemplate(cinfo);
+		return buildGenericConstraint(bodyA, bodyB, cinfo);
+	}
+
+	RE::BSTSmartPointer<Generic6DofConstraint> SkyrimSystemCreator::buildGenericConstraint(SkyrimBone* bodyA, SkyrimBone* bodyB, const GenericConstraintTemplate& cinfo)
+	{
 		auto trA = bodyA->m_currentTransform;
 		auto trB = bodyB->m_currentTransform;
 
-		auto cinfo = getGenericConstraintTemplate(clsname);
-		readGenericConstraintTemplate(cinfo);
 		btTransform frameA, frameB;
 		calcFrame(cinfo.frameType, cinfo.frame, trA, trB, frameA, frameB);
 
