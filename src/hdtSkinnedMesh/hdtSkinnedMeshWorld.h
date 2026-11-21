@@ -15,6 +15,8 @@ namespace hdt
 
 		virtual void addSkinnedMeshSystem(SkinnedMeshSystem* system);
 		virtual void removeSkinnedMeshSystem(SkinnedMeshSystem* system);
+		// Re-add without RESET_PHYSICS / without rewriting bone transforms (freeze-in-place resume).
+		void addSkinnedMeshSystemKeepPose(SkinnedMeshSystem* system);
 
 		void updateConstraintsForBone(SkinnedMeshBone* bone);
 

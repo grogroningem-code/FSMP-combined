@@ -103,6 +103,12 @@ namespace hdt
 		SkyrimPhysicsWorld(void);
 		~SkyrimPhysicsWorld(void) noexcept;
 
+		// World-system (Banner Physics) culling. No instance fields — state lives in a .cpp static map
+		// so SkyrimPhysicsWorld's layout stays stock for SMPFixes / Banner Physics Detect().
+		void updateWorldSystemCulling();
+		void detachSystemKeepPose(SkinnedMeshSystem* system);
+		void attachSystemKeepPose(SkinnedMeshSystem* system);
+
 		std::mutex m_lock;
 
 		std::atomic_bool m_suspended;

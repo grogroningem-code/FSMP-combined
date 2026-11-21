@@ -239,6 +239,9 @@ namespace hdt
 
 		bool skeletonNeedsParts(RE::NiNode* skeleton);
 		std::vector<Skeleton>& getSkeletons();  //Altered by Dynamic HDT
+		// Append every armor/head SkyrimSystem pointer this manager currently tracks (Banner Physics world
+		// systems are not included). Layout-neutral helper for SkyrimPhysicsWorld banner culling.
+		void snapshotTrackedSystems(std::vector<const SkinnedMeshSystem*>& out) const;
 		std::unique_lock<std::recursive_mutex> lockGuard() { return std::unique_lock(m_lock); }
 
 		bool m_disableSMPHairWhenWigEquipped = false;
@@ -263,9 +266,23 @@ namespace hdt
 		// @brief Min percent of screen height a non-player skeleton must occupy to stay active; 0 = disabled. [0,100]
 		float m_minScreenSizePercent = 0.f;
 
+		// @brief ActorVisibility.dll integration (smp.actorVisibilityMode). 0 = off, 1 = additionally cull skeletons
+		// ActorVisibility reports OFFSCREEN/OCCLUDED, 2 = ActorVisibility's verdict replaces FSMP's own frustum + LOS
+		// test. Ignored (stock behaviour) when the DLL isn't loaded or reports UNKNOWN for the actor.
+		// ABI: static (not an instance member) so ActorManager's layout stays identical to stock FSMP 4.1.1;
+		// closed-source plugins (e.g. SMPFixes) read ActorManager/Skeleton memory directly.
+		static inline int m_actorVisibilityMode = 0;
+
+		// @brief When non-zero, apply frustum + optional havok occlusion culling to non-actor SMP skeletons
+		// (e.g. SMP banners) whose owner is not an Actor. 0 = stock (always keep them active).
+		static inline int m_cullNonActorSkeletons = 0;  // static: see ABI note above
+
 	private:
 		RE::NiPoint3 m_cameraPositionDuringFrame;
 		float m_screenSizeThresholdScale = 0.f;  // precomputed per frame: (minScreenSizePercent/100)^2 * tan(fov/2)^2
+		// Per-frame remaining budget for non-actor havok rays (reset in setSkeletonsActive).
+		static inline int m_nonActorRaysLeft = 0;  // static: see ABI note above
+		static constexpr int kMaxNonActorRaysPerFrame = 4;
 		static RE::NiNode* getCameraNode();
 
 		void setSkeletonsActive(const bool updateMetrics = false);

@@ -16,7 +16,9 @@
     "sampleSize": 1,
     "disable1stPersonViewPhysics": true,
     "skipDeadActors": false,
-    "minScreenSizePercent": 0.0
+    "minScreenSizePercent": 0.0,
+    "actorVisibilityMode": 0,
+    "cullNonActorSkeletons": 0
   },
   "solver": {
     "numIterations": 16,

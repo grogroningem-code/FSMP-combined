@@ -103,6 +103,42 @@ namespace hdt
 		system->m_world = this;
 	}
 
+
+	void SkinnedMeshWorld::addSkinnedMeshSystemKeepPose(SkinnedMeshSystem* system)
+	{
+		if (!system)
+			return;
+		if (std::find(m_systems.begin(), m_systems.end(), system) != m_systems.end()) {
+			return;
+		}
+
+		m_systems.push_back(hdt::make_smart(system));
+		for (int i = 0; i < system->m_meshes.size(); ++i) {
+			addCollisionObject(system->m_meshes[i].get(), 1, 1);
+		}
+
+		for (int i = 0; i < system->m_bones.size(); ++i) {
+			auto& rig = system->m_bones[i]->m_rig;
+			rig.setLinearVelocity(btVector3(0, 0, 0));
+			rig.setAngularVelocity(btVector3(0, 0, 0));
+			rig.clearForces();
+			rig.setActivationState(DISABLE_DEACTIVATION);
+			addRigidBody(&rig, 0, 0);
+		}
+
+		for (auto i : system->m_constraintGroups)
+			for (auto j : i->m_constraints)
+				if (j->m_constraint)
+					addConstraint(j->m_constraint, true);
+
+		for (int i = 0; i < system->m_constraints.size(); ++i)
+			if (system->m_constraints[i]->m_constraint)
+				addConstraint(system->m_constraints[i]->m_constraint, true);
+
+		// Deliberately skip readTransform(RESET_PHYSICS) so the cloth resumes from its frozen pose.
+		system->m_world = this;
+	}
+
 	void SkinnedMeshWorld::removeSkinnedMeshSystem(SkinnedMeshSystem* system)
 	{
 		auto idx = std::find(m_systems.begin(), m_systems.end(), system);

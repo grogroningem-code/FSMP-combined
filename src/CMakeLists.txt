@@ -69,6 +69,10 @@ set(SOURCE_FILES
 	"${SOURCE_DIR}/WeatherManager.cpp"
 	"${SOURCE_DIR}/WeatherManager.h"
 	"${SOURCE_DIR}/ActorManager.cpp"
+	"${SOURCE_DIR}/ActorVisibilityBridge.cpp"
+	"${SOURCE_DIR}/ActorVisibilityBridge.h"
+	"${SOURCE_DIR}/NonActorRayCaster.cpp"
+	"${SOURCE_DIR}/NonActorRayCaster.h"
 	"${SOURCE_DIR}/ActorManager.h"
 	"${SOURCE_DIR}/hdtSkyrimPhysicsWorld.cpp"
 	"${SOURCE_DIR}/hdtSkyrimPhysicsWorld.h"
@@ -359,6 +363,7 @@ if("${COPY_OUTPUT}")
 	add_custom_command(
 		TARGET "${PROJECT_NAME}"
 		POST_BUILD
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CompiledPluginsPath}/SKSE/Plugins"
 		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>"
 				"${CompiledPluginsPath}/SKSE/Plugins/"
 		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>"

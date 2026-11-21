@@ -62,6 +62,8 @@ namespace hdt
 		a->m_disable1stPersonViewPhysics = c.disable1stPersonViewPhysics;
 		a->m_skipDeadActors = c.skipDeadActors;
 		a->m_minScreenSizePercent = c.minScreenSizePercent;
+		a->m_actorVisibilityMode = c.actorVisibilityMode;
+		a->m_cullNonActorSkeletons = c.cullNonActorSkeletons;
 
 		auto* w = SkyrimPhysicsWorld::get();
 		w->m_clampRotations = c.clampRotations;
@@ -112,6 +114,8 @@ namespace hdt
 		c.disable1stPersonViewPhysics = a->m_disable1stPersonViewPhysics;
 		c.skipDeadActors = a->m_skipDeadActors;
 		c.minScreenSizePercent = a->m_minScreenSizePercent;
+		c.actorVisibilityMode = a->m_actorVisibilityMode;
+		c.cullNonActorSkeletons = a->m_cullNonActorSkeletons;
 
 		auto* w = SkyrimPhysicsWorld::get();
 		c.clampRotations = w->m_clampRotations;
@@ -225,6 +229,8 @@ namespace hdt
 		LOG("smp.disable1stPersonViewPhysics", a->m_disable1stPersonViewPhysics);
 		LOG("smp.skipDeadActors", a->m_skipDeadActors);
 		LOG("smp.minScreenSizePercent", a->m_minScreenSizePercent);
+		LOG("smp.actorVisibilityMode", a->m_actorVisibilityMode);
+		LOG("smp.cullNonActorSkeletons", a->m_cullNonActorSkeletons);
 #undef LOG
 	}
 }

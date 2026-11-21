@@ -1,12 +1,69 @@
 #include "hdtSkyrimPhysicsWorld.h"
+#include "NonActorRayCaster.h"
 #include "PluginInterfaceImpl.h"
 #include "WeatherManager.h"
 #include "hdtPhysicsProfiler.h"
 
 #include <LinearMath/btQuickprof.h>
 
+#include <algorithm>
+#include <chrono>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 namespace hdt
 {
+	namespace
+	{
+		// Per-world-system cull state for systems NOT owned by ActorManager (Banner Physics HDT-SMP
+		// banners added via addSkinnedMeshSystem). Kept outside SkyrimPhysicsWorld so that class's
+		// sizeof / member offsets stay stock FSMP 4.1.1 (SMPFixes + Banner Physics Detect()).
+		struct WorldSystemCullState
+		{
+			std::uint8_t viewFails = 0;
+			bool paused = false;
+			std::chrono::steady_clock::time_point lastLog{};
+		};
+
+		std::unordered_map<SkinnedMeshSystem*, WorldSystemCullState> g_worldSystemCull;
+		// Keep-alive while we have soft-removed the system from m_systems (Banner Physics also holds
+		// a ref; this covers any transient gap).
+		std::unordered_map<SkinnedMeshSystem*, RE::BSTSmartPointer<SkinnedMeshSystem>> g_pausedWorldSystems;
+
+		constexpr int kMaxWorldSystemRaysPerFrame = 4;
+
+		void clearWorldSystemCull(SkinnedMeshSystem* system)
+		{
+			if (!system)
+				return;
+			g_worldSystemCull.erase(system);
+			g_pausedWorldSystems.erase(system);
+		}
+
+		void zeroBoneMotion(SkinnedMeshSystem* system)
+		{
+			if (!system)
+				return;
+			for (auto& bone : system->getBones()) {
+				if (!bone)
+					continue;
+				bone->m_rig.setLinearVelocity(btVector3(0, 0, 0));
+				bone->m_rig.setAngularVelocity(btVector3(0, 0, 0));
+				bone->m_rig.clearForces();
+			}
+		}
+
+		RE::NiPoint3 cameraWorldPos()
+		{
+			if (auto* cam = RE::Main::WorldRootCamera())
+				return cam->world.translate;
+			return {};
+		}
+
+		// Populated in ProcessEvent(FrameEvent) before m_lock is taken (see snapshot note there).
+		thread_local std::unordered_set<const SkinnedMeshSystem*> t_trackedSystems;
+	}
 	static const float* timeStamp = (float*)0x12E355C;
 
 	SkyrimPhysicsWorld::SkyrimPhysicsWorld(void)
@@ -92,6 +149,147 @@ namespace hdt
 		return &g_World;
 	}
 
+	void SkyrimPhysicsWorld::detachSystemKeepPose(SkinnedMeshSystem* system)
+	{
+		// Caller must already hold m_lock. Same detach as SkinnedMeshWorld::removeSkinnedMeshSystem
+		// (leaves bone/Ni transforms alone so the cloth freezes in place).
+		SkinnedMeshWorld::removeSkinnedMeshSystem(system);
+	}
+
+	void SkyrimPhysicsWorld::attachSystemKeepPose(SkinnedMeshSystem* system)
+	{
+		// Caller must already hold m_lock. Re-add without RESET_PHYSICS / without clearing
+		// m_initialized — resume from the frozen pose instead of snapping to the animated bind.
+		SkinnedMeshWorld::addSkinnedMeshSystemKeepPose(system);
+	}
+
+	void SkyrimPhysicsWorld::updateWorldSystemCulling()
+	{
+		// Caller must already hold m_lock (ProcessEvent -> doUpdate). Uses ActorManager::m_cullNonActorSkeletons.
+		auto* am = ActorManager::instance();
+		if (!am)
+			return;
+
+		if (am->m_cullNonActorSkeletons == 0) {
+			// Setting off: resume everything we paused and drop state.
+			std::vector<SkinnedMeshSystem*> resume;
+			resume.reserve(g_pausedWorldSystems.size());
+			for (auto& [system, hold] : g_pausedWorldSystems) {
+				(void)hold;
+				resume.push_back(system);
+			}
+			for (auto* system : resume)
+				attachSystemKeepPose(system);
+			g_pausedWorldSystems.clear();
+			g_worldSystemCull.clear();
+			return;
+		}
+
+		auto* camera = RE::Main::WorldRootCamera();
+		const RE::NiPoint3 camPos = cameraWorldPos();
+		NonActorRayCaster caster(camera, camPos);
+		NonActorRayCaster::Params params;
+		params.radiusScale = 1.25f;
+		params.radiusMargin = 64.0f;
+		int raysLeft = kMaxWorldSystemRaysPerFrame;
+		const float minDist = am->m_minCullingDistance;
+		const float minDist2 = minDist * minDist;
+
+		// Candidates: active world systems not tracked by ActorManager, plus currently paused ones.
+		// t_trackedSystems was snapshotted before m_lock (no nested AM lock here).
+		std::vector<SkinnedMeshSystem*> candidates;
+		candidates.reserve(m_systems.size() + g_pausedWorldSystems.size());
+		for (auto& sp : m_systems) {
+			auto* raw = sp.get();
+			if (!raw || t_trackedSystems.count(raw))
+				continue;
+			if (!dynamic_cast<SkyrimSystem*>(raw))
+				continue;
+			candidates.push_back(raw);
+		}
+		for (auto& [raw, hold] : g_pausedWorldSystems) {
+			(void)hold;
+			if (raw && !t_trackedSystems.count(raw) &&
+				std::find(candidates.begin(), candidates.end(), raw) == candidates.end())
+				candidates.push_back(raw);
+		}
+
+		for (auto* raw : candidates) {
+			auto* system = dynamic_cast<SkyrimSystem*>(raw);
+			if (!system || !system->m_skeleton)
+				continue;
+
+			auto& st = g_worldSystemCull[raw];
+			RE::NiAVObject* root3D = system->m_skeleton.get();
+			RE::TESObjectREFR* owner = nullptr;
+			if (auto* ud = system->m_skeleton->GetUserData()) {
+				owner = ud;
+				if (auto* r3 = ud->Get3D())
+					root3D = r3;
+			}
+
+			// Near-camera exemption (same idea as ActorManager::isInPlayerView minCullingDistance).
+			bool rawVisible = true;
+			const char* rayResult = "near";
+			bool inFrustum = true;
+			if (root3D) {
+				const auto& c = root3D->worldBound.center;
+				const float dx = c.x - camPos.x;
+				const float dy = c.y - camPos.y;
+				const float dz = c.z - camPos.z;
+				const float dist2 = dx * dx + dy * dy + dz * dz;
+				if (dist2 >= minDist2) {
+					inFrustum = caster.InFrustum(root3D, params);
+					rawVisible = inFrustum;
+					rayResult = "skipped";
+					if (inFrustum && raysLeft > 0) {
+						params.doRaycast = true;
+						--raysLeft;
+						const auto result = caster.GetResult(owner, root3D, params);
+						params.doRaycast = false;
+						if (result == NonActorRayCaster::Result::kObscured) {
+							rawVisible = false;
+							rayResult = "obscured";
+						} else {
+							rayResult = "clear";
+						}
+					} else if (!inFrustum) {
+						rayResult = "offscreen";
+					}
+				}
+			}
+
+			if (rawVisible)
+				st.viewFails = 0;
+			else if (st.viewFails < 255)
+				++st.viewFails;
+			const bool shouldBeActive = st.viewFails < 2;
+
+			if (spdlog::should_log(spdlog::level::debug)) {
+				const auto now = std::chrono::steady_clock::now();
+				if (now - st.lastLog >= std::chrono::seconds(1)) {
+					st.lastLog = now;
+					logger::debug("world SMP system {:p}: frustum {} ray {} fails {} -> {}",
+						static_cast<const void*>(raw), inFrustum, rayResult, st.viewFails,
+						shouldBeActive ? "active" : "culled");
+				}
+			}
+
+			if (shouldBeActive) {
+				if (st.paused) {
+					attachSystemKeepPose(raw);
+					g_pausedWorldSystems.erase(raw);
+					st.paused = false;
+				}
+			} else if (!st.paused) {
+				zeroBoneMotion(raw);
+				g_pausedWorldSystems[raw] = hdt::make_smart(raw);
+				detachSystemKeepPose(raw);
+				st.paused = true;
+			}
+		}
+	}
+
 	void SkyrimPhysicsWorld::doUpdate(float interval)
 	{
 		_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
@@ -101,6 +299,10 @@ namespace hdt
 
 		// Exponential average - becomes the tick; the tick equals the average interval when the interval is stable.
 		m_averageInterval += (interval - m_averageInterval) * .125f;
+
+		// Pause/resume Banner Physics (and other non-ActorManager) world systems before we read
+		// transforms. Must run while ProcessEvent holds m_lock; never call the locking add/remove wrappers.
+		updateWorldSystemCulling();
 
 		// No need to calculate physics if there is no active skeleton.
 		if (!disabled && hdt::ActorManager::instance()->activeSkeletons) {
@@ -289,6 +491,9 @@ namespace hdt
 		if (!s)
 			return;
 
+		// A real add (Banner Physics / ActorManager) wins over our soft-pause.
+		clearWorldSystemCull(system);
+
 		s->m_initialized = false;
 		SkinnedMeshWorld::addSkinnedMeshSystem(system);
 	}
@@ -297,6 +502,7 @@ namespace hdt
 	{
 		std::lock_guard<decltype(m_lock)> l(m_lock);
 
+		clearWorldSystemCull(system);
 		SkinnedMeshWorld::removeSkinnedMeshSystem(system);
 	}
 
@@ -307,12 +513,23 @@ namespace hdt
 		for (int i = 0; i < m_systems.size();) {
 			RE::BSTSmartPointer<SkyrimSystem> s = hdt::make_smart(dynamic_cast<SkyrimSystem*>(m_systems[i].get()));
 			if (s && s->m_skeleton == root) {
+				clearWorldSystemCull(s.get());
 				SkinnedMeshWorld::removeSkinnedMeshSystem(s.get());
 			}
 
 			else
 				++i;
 		}
+		// Also drop any soft-paused world system whose skeleton matches.
+		std::vector<SkinnedMeshSystem*> dropPaused;
+		for (auto& [sys, hold] : g_pausedWorldSystems) {
+			(void)hold;
+			auto* s = dynamic_cast<SkyrimSystem*>(sys);
+			if (s && s->m_skeleton == root)
+				dropPaused.push_back(sys);
+		}
+		for (auto* sys : dropPaused)
+			clearWorldSystemCull(sys);
 	}
 
 	void SkyrimPhysicsWorld::resetSystems()
@@ -342,6 +559,18 @@ namespace hdt
 		if (m_doMetrics) {
 			QueryPerformanceCounter(&ticks);
 			startTime = ticks.QuadPart;
+		}
+
+		// Snapshot ActorManager-tracked systems BEFORE taking m_lock to avoid lock-order inversion
+		// (ActorManager holds its lock then calls add/removeSkinnedMeshSystem which take m_lock).
+		t_trackedSystems.clear();
+		if (auto* am = ActorManager::instance()) {
+			std::vector<const SkinnedMeshSystem*> tracked;
+			{
+				auto lock = am->lockGuard();
+				am->snapshotTrackedSystems(tracked);
+			}
+			t_trackedSystems.insert(tracked.begin(), tracked.end());
 		}
 
 		std::lock_guard<decltype(m_lock)> l(m_lock);
@@ -439,6 +668,8 @@ namespace hdt
 		while (m_systems.size()) {
 			SkinnedMeshWorld::removeSkinnedMeshSystem(m_systems.back().get());
 		}
+		g_pausedWorldSystems.clear();
+		g_worldSystemCull.clear();
 
 		m_tasks.wait();
 

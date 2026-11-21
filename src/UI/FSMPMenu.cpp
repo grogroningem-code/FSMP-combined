@@ -718,6 +718,14 @@ namespace
 					"Skip non-player NPCs smaller than this % of screen height. 0 disables the check.",
 					&a->m_minScreenSizePercent, d.minScreenSizePercent, 0.0f, 100.0f, "%.1f"))
 				commitReset();
+			if (rowInt("ActorVisibility mode",
+					"Needs ActorVisibility.dll. 0 = off. 1 = also skip NPCs it reports off-screen/occluded. 2 = use its verdict instead of FSMP's own per-frame view/line-of-sight test.",
+					&a->m_actorVisibilityMode, d.actorVisibilityMode, 0, 2))
+				commitReset();
+			if (rowInt("Cull non-actor skeletons",
+					"Pause SMP for non-actor skeletons (e.g. banners) that are off-screen or occluded. 0 = stock (always simulate). 1 = cull with padded frustum + staggered occlusion rays.",
+					&a->m_cullNonActorSkeletons, d.cullNonActorSkeletons, 0, 1))
+				commitReset();
 			endRows();
 		}
 	}

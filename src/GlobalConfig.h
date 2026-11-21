@@ -38,6 +38,11 @@ namespace hdt
 		bool disable1stPersonViewPhysics = false;
 		bool skipDeadActors = false;
 		float minScreenSizePercent = 0.0f;
+		// ActorVisibility.dll integration (optional). 0 = off (stock culling), 1 = also cull skeletons
+		// ActorVisibility reports hidden, 2 = ActorVisibility's verdict replaces FSMP's own frustum/LOS test.
+		int actorVisibilityMode = 0;
+		// Cull non-actor SMP skeletons (banners, etc.). 0 = stock (always active), 1 = frustum + occlusion culling.
+		int cullNonActorSkeletons = 0;
 		// backupNodeByName has no menu control; it is preserved purely so a round-trip never drops it.
 		std::vector<std::string> backupNodeByName;
 
