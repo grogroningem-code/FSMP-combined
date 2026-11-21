@@ -1,12 +1,32 @@
 
 #include "ActorManager.h"
+#include "ActorVisibilityBridge.h"
+#include "NonActorRayCaster.h"
 #include "WeatherManager.h"
 #include "dhdtOverrideManager.h"
 #include "hdtDefaultBBP.h"
 #include "hdtSkyrimPhysicsWorld.h"
 
+#include <chrono>
+#include <unordered_map>
+
 namespace hdt
 {
+	namespace
+	{
+		// Per-skeleton state for non-actor culling, kept OUTSIDE ActorManager::Skeleton so that class keeps the
+		// exact stock FSMP 4.1.1 layout (sizeof / member offsets / std::vector<Skeleton> stride). Closed-source
+		// plugins such as SMPFixes walk ActorManager::m_skeletons directly; adding a member there crashed them.
+		// Keyed by the skeleton NiNode pointer; entries are erased when the skeleton is purged in
+		// setSkeletonsActive(). Only touched under ActorManager::m_lock (same as m_skeletons).
+		struct NonActorCullState
+		{
+			std::uint8_t viewFails = 0;
+			std::chrono::steady_clock::time_point lastLog{};
+		};
+		std::unordered_map<const RE::NiNode*, NonActorCullState> g_nonActorCullState;
+	}
+
 	// NiAVObject* Actor::CalculateLOS_1405FD2C0(Actor *aActor, NiPoint3 *aTargetPosition, NiPoint3 *aRayHitPosition, float aViewCone)
 	// Used to ray cast from the actor. Will return nonNull if it hits something with position at aTargetPosition.
 	// Pass in 2pi to aViewCone to ignore LOS of actor.
@@ -420,6 +440,8 @@ namespace hdt
 		// Purge dead skeletons before doing any work on them.
 		std::erase_if(m_skeletons, [](Skeleton& i) {
 			if (!i.skeleton || i.skeleton->_refCount == 1) {
+				if (i.skeleton)
+					g_nonActorCullState.erase(i.skeleton.get());
 				i.clear();
 				return true;
 			}
@@ -439,6 +461,7 @@ namespace hdt
 		const auto cameraPosition = cameraTransform.translate;
 		const auto cameraOrientation = cameraTransform.rotate * RE::NiPoint3(0., 1., 0.);  // The camera matrix is relative to the world.
 		m_cameraPositionDuringFrame = cameraPosition;
+		m_nonActorRaysLeft = kMaxNonActorRaysPerFrame;
 
 		// Precompute the screen-size threshold for this frame from the scene FOV (0 = feature disabled).
 		m_screenSizeThresholdScale = 0.f;
@@ -512,11 +535,17 @@ namespace hdt
 			// Skeletons inside the minimum culling distance are kept active even when the budget cap
 			// is exceeded, so a shrinking auto-adjust cap can't strip physics from NPCs next to the camera.
 			const bool forceKeepNear = i.m_distanceFromCamera2 < minCullingDistance2;
-			const bool overBudget = activeSkeletons >= maxActiveSkeletons;
+			// With smp.cullNonActorSkeletons on, non-actor skeletons (SMP banners) are culled by view instead of
+			// by the actor budget: they are exempt from maxActiveSkeletons and don't consume actor slots, so an
+			// on-screen banner is never starved by NPCs (user configs run maxActiveSkeletons as low as 5).
+			// With the setting off, they compete for the budget exactly like stock.
+			const bool budgetExempt = m_cullNonActorSkeletons != 0 && !i.isPlayerCharacter() && !skyrim_cast<RE::Actor*>(i.skeletonOwner.get());
+			const bool overBudget = !budgetExempt && activeSkeletons >= maxActiveSkeletons;
 			if (!i.hasPhysics || !i.updateAttachedState(playerCell, (overBudget && !forceKeepNear) || skipDeadActor))
 				continue;
 
-			activeSkeletons++;
+			if (!budgetExempt)
+				activeSkeletons++;
 
 			// Check wind obstructions for active skeletons.
 			if (!windEnabled)
@@ -692,6 +721,20 @@ namespace hdt
 	std::vector<ActorManager::Skeleton>& ActorManager::getSkeletons()
 	{
 		return m_skeletons;
+	}
+
+	void ActorManager::snapshotTrackedSystems(std::vector<const SkinnedMeshSystem*>& out) const
+	{
+		for (auto& skel : m_skeletons) {
+			for (auto& armor : const_cast<Skeleton&>(skel).getArmors()) {
+				if (auto* sys = armor.m_physics.get())
+					out.push_back(sys);
+			}
+			for (auto& part : skel.head.headParts) {
+				if (auto* sys = part.m_physics.get())
+					out.push_back(sys);
+			}
+		}
 	}
 
 	bool ActorManager::skeletonNeedsParts(RE::NiNode* skeleton)
@@ -1119,14 +1162,83 @@ namespace hdt
 			return true;
 
 		auto* owner = skyrim_cast<RE::Actor*>(skeletonOwner.get());
-		if (!owner)
-			return true;  // should never happen, a skeleton without owner?
+		if (!owner) {
+			// Non-actor SMP skeleton (e.g. SMP banners). Stock FSMP kept these always active
+			// (`if (!owner) return true`). Behind smp.cullNonActorSkeletons we apply a padded
+			// frustum test, the same screen-size test as actors, and a staggered havok occlusion
+			// raycast, with hysteresis (hide after 2 consecutive fails; visible immediately).
+			if (manager->m_cullNonActorSkeletons == 0)
+				return true;
+
+			RE::NiAVObject* root3D = nullptr;
+			if (auto* refr = skeletonOwner.get())
+				root3D = refr->Get3D();
+			if (!root3D)
+				root3D = skeleton.get();
+
+			auto* camera = RE::Main::WorldRootCamera();
+			NonActorRayCaster caster(camera, manager->m_cameraPositionDuringFrame);
+			NonActorRayCaster::Params params;
+			params.radiusScale = 1.25f;
+			params.radiusMargin = 64.0f;
+
+			// NOTE: the actor screen-size cull (smp.minScreenSizePercent) is deliberately NOT applied here.
+			// It is tuned for whole NPCs (e.g. 10% of screen height); a banner is a thin cloth strip whose
+			// bound would fail that test at almost any range, which froze every banner.
+			const bool inFrustum = root3D && caster.InFrustum(root3D, params);
+			bool rawVisible = inFrustum;
+			const char* rayResult = "skipped";
+
+			// Staggered occlusion: only a few non-actor skeletons raycast per frame. Skeletons beyond the
+			// ray budget keep their frustum result (never hidden without a ray confirming occlusion).
+			if (inFrustum && manager->m_nonActorRaysLeft > 0) {
+				params.doRaycast = true;
+				--manager->m_nonActorRaysLeft;
+				const auto result = caster.GetResult(skeletonOwner.get(), root3D, params);
+				if (result == NonActorRayCaster::Result::kObscured) {
+					rawVisible = false;
+					rayResult = "obscured";
+				} else
+					rayResult = "clear";
+			}
+
+			auto& st = g_nonActorCullState[skeleton.get()];
+			if (rawVisible)
+				st.viewFails = 0;
+			else if (st.viewFails < 255)
+				++st.viewFails;
+			// Hide only after 2 consecutive failed checks; become visible immediately on success.
+			const bool active = st.viewFails < 2;
+
+			if (spdlog::should_log(spdlog::level::debug)) {
+				const auto now = std::chrono::steady_clock::now();
+				if (now - st.lastLog >= std::chrono::seconds(1)) {
+					st.lastLog = now;
+					logger::debug("non-actor skeleton {} ({:p}): frustum {} ray {} fails {} -> {}",
+						name(), static_cast<const void*>(skeleton.get()), inFrustum, rayResult, st.viewFails, active ? "active" : "culled");
+				}
+			}
+			return active;
+		}
+
+		// ActorVisibility.dll (optional). Only consulted outside minCullingDistance, and never for the player
+		// (this function isn't called for the player). Becoming active again goes through the normal
+		// addSkinnedMeshSystem path, which resets the system to the animated pose (m_initialized = false).
+		bool trustActorVisibility = false;
+		if (const int avMode = manager->m_actorVisibilityMode; avMode != 0) {
+			const auto avState = ActorVisibilityBridge::GetState(owner->formID);
+			if (avState == ActorVisibilityBridge::State::kOffscreen || avState == ActorVisibilityBridge::State::kOccluded)
+				return false;  // hidden (after ActorVisibility's hysteresis): inactive, and skips our own LOS ray
+			if (avMode == 2 && avState == ActorVisibilityBridge::State::kVisible)
+				trustActorVisibility = true;  // skip our per-frame frustum + LOS ray; the screen-size test still applies
+			// kUnknown or mode 1 + visible: fall through to the stock checks
+		}
 
 		// We don't enable the skeletons off-screen
 		auto* camera = RE::Main::WorldRootCamera();
 		auto* skeleton3D = owner->Get3D(false);
 
-		if (!skeleton3D || (camera && !camera->NodeInFrustum(skeleton3D)))
+		if (!skeleton3D || (!trustActorVisibility && camera && !camera->NodeInFrustum(skeleton3D)))
 			return false;
 
 		// Skip non-player skeletons whose projected bounding sphere is below the screen-size threshold.
@@ -1144,6 +1256,9 @@ namespace hdt
 			}
 		}
 
+		if (trustActorVisibility)
+			return true;
+
 		RE::NiPoint3 hitLocation;
 		auto* obstacle = Actor_CalculateLOS(owner, &manager->m_cameraPositionDuringFrame, &hitLocation, 6.28f);
 		return !obstacle;  // If obstacle, we hit something on the path
@@ -1157,6 +1272,18 @@ namespace hdt
 			if (rootNode) {
 				return std::optional<RE::NiPoint3>(rootNode->world.translate);
 			}
+		}
+
+		// Non-actor skeletons (e.g. SMP banners) and other trees without "NPC Root [Root]"
+		// used to return nullopt here, which made distance = FLT_MAX and broke culling/budget.
+		// Fall back to the owner's 3D world translate, then the registered skeleton node.
+		if (auto* refr = skeletonOwner.get()) {
+			if (auto* obj3d = refr->Get3D()) {
+				return std::optional<RE::NiPoint3>(obj3d->world.translate);
+			}
+		}
+		if (skeleton) {
+			return std::optional<RE::NiPoint3>(skeleton->world.translate);
 		}
 
 		return std::optional<RE::NiPoint3>();

@@ -151,3 +151,20 @@ TEST_CASE("equality distinguishes differing configs (Presets highlight)")
 	b.windStrength = a.windStrength + 1.0f;
 	CHECK_FALSE(a == b);
 }
+
+TEST_CASE("actorVisibilityMode defaults to 0, round-trips, and is clamped to [0,2]")
+{
+	CHECK(GlobalConfig{}.actorVisibilityMode == 0);
+	CHECK(parseConfigJson(R"({ "smp": { "actorVisibilityMode": 2 } })").actorVisibilityMode == 2);
+	CHECK(parseConfigJson(R"({ "smp": { "actorVisibilityMode": 7 } })").actorVisibilityMode == 2);
+	CHECK(parseConfigJson(R"({ "smp": { "actorVisibilityMode": -1 } })").actorVisibilityMode == 0);
+}
+
+TEST_CASE("cullNonActorSkeletons defaults to 0, round-trips, and is clamped to [0,1]")
+{
+	CHECK(GlobalConfig{}.cullNonActorSkeletons == 0);
+	CHECK(parseConfigJson(R"({ "smp": { "cullNonActorSkeletons": 1 } })").cullNonActorSkeletons == 1);
+	CHECK(parseConfigJson(R"({ "smp": { "cullNonActorSkeletons": 7 } })").cullNonActorSkeletons == 1);
+	CHECK(parseConfigJson(R"({ "smp": { "cullNonActorSkeletons": -1 } })").cullNonActorSkeletons == 0);
+}
+

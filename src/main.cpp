@@ -1,4 +1,5 @@
 #include "ActorManager.h"
+#include "ActorVisibilityBridge.h"
 #include "Events.h"
 #include "Hooks.h"
 #include "PluginInterfaceImpl.h"
@@ -646,6 +647,10 @@ namespace
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 {
 	switch (a_msg->type) {
+	case SKSE::MessagingInterface::kPostLoad:
+		// Optional ActorVisibility.dll: every plugin DLL is loaded by now. No-op (stock culling) if absent.
+		hdt::ActorVisibilityBridge::Load();
+		break;
 	case SKSE::MessagingInterface::kInputLoaded:
 		Events::Register();
 		break;

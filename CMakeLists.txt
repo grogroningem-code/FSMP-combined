@@ -24,6 +24,9 @@ set_from_environment(CompiledPluginsPath)
 if(NOT DEFINED CompiledPluginsPath)
 	message(FATAL_ERROR "CompiledPluginsPath is not set")
 endif()
+# Normalise Windows paths (C:\FSMPout -> C:/FSMPout) so backslashes never reach the
+# post-build copy as escape sequences.
+file(TO_CMAKE_PATH "${CompiledPluginsPath}" CompiledPluginsPath)
 
 option(COPY_OUTPUT "Copy the output of build operations to the game directory" ON)
 option(ENABLE_SKYRIM_SE "Enable support for Skyrim SE in the dynamic runtime feature." ON)
