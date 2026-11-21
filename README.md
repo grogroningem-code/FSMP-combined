@@ -1,16 +1,35 @@
-# Settle build of Faster HDT-SMP
+# FSMP combined build
 
-This is a modified version of [Faster HDT-SMP](https://github.com/DaymareOn/hdtSMP64) 4.1.1 (commit e52ad96), used by
-[Settle - Seat Collision for SMP Cloth](https://github.com/Flob26/Settle). Modified by Flob26, November 2026.
+A personal build of [Faster HDT-SMP](https://github.com/DaymareOn/hdtSMP64) 4.1.1 (FSMP) that puts several
+GPL-3.0 changes into one `hdtSMP64.dll`, since each of them ships its own copy of that file and only one can load.
 
-Changes (see the commit history of branch `flobrim-world-collision` for details):
-- New world-collision plugin interface (`src/WorldCollisionAPI.h`, `src/hdtWorldCollider.*`): other SKSE plugins can register
-  triangle meshes (e.g. furniture seats) as kinematic collision bodies for SMP cloth.
-- Seated hug (`src/hdtSeatHug.*`): while an actor sits, lower skirt cloth bones can be tied to the legs.
-- Small hooks in `src/CMakeLists.txt`, `src/PluginInterfaceImpl.cpp`, `src/hdtSkyrimBody.cpp`, `src/hdtSkyrimSystem.*`,
-  `src/hdtSkinnedMesh/hdtSkinnedMeshAlgorithm.cpp`, `src/hdtSkinnedMesh/hdtSkinnedMeshBody.h`.
+Work in progress: it compiles, but it has not been tested in game yet. There is no Nexus release.
 
-Licensed like the original: GPL-3.0 with the exceptions in `EXCEPTIONS`. All credit for Faster HDT-SMP goes to DaymareOn and its contributors.
+## What is in it
+
+| Change | Source | Author |
+|---|---|---|
+| Faster HDT-SMP 4.1.1 (commit e52ad96) | [DaymareOn/hdtSMP64](https://github.com/DaymareOn/hdtSMP64) | DaymareOn and contributors |
+| Settle 1.1.1: world-collision interface for seats and mounts, seated skirt hug | [Flob26/Settle-hdtSMP64](https://github.com/Flob26/Settle-hdtSMP64), branch `settle-guard` | Flob26 |
+| Clothing Clipping Fix: carries cloth through teleports, restarts it after pose swaps, holds new outfits at rest until the pose settles | [YoucefNabil/FSMP-Discontinuity-Guard](https://github.com/YoucefNabil/FSMP-Discontinuity-Guard) (merged through Settle's `settle-guard`) | Youcef |
+| Isolate TBB loops run under the physics lock (deadlock crash) | upstream PR #484, unmerged | Alan Tse |
+| Drain the physics task queue on FrameEvent (step and setup race) | upstream PR #428, unmerged | DaymareOn |
+| Cache whether a skeleton is first person | upstream PR #317, unmerged | asdasdduck |
+| Build with Visual Studio 2026 (MSVC 14.51) for the plugin and all vcpkg dependencies | upstream branch `vs2026`, plus `cmake/triplets/_pin_toolset.cmake` | DaymareOn, grogroningem-code |
+
+The commit history keeps every author. Upstream pins its dependencies to MSVC 14.44; this build uses 14.51 for
+everything instead, which upstream has not tested.
+
+## Building
+
+Same as upstream, with the VS 2026 presets: `cmake --preset vs2026-windows-avx2 -T v145
+-DCompiledPluginsPath=<output folder> -DCOPY_OUTPUT=OFF`, then `cmake --build out/build/vs2026-windows-avx2
+--config Release`.
+
+## License
+
+GPL-3.0 with the exceptions in `EXCEPTIONS`, like the original. All credit for Faster HDT-SMP goes to DaymareOn and
+its contributors, and for the merged changes to the authors listed above.
 
 ---
 
