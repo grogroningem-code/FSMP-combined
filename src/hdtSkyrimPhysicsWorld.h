@@ -2,6 +2,7 @@
 
 #include "ActorManager.h"
 #include "Events.h"
+#include "hdtDiscontinuityGuard.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshWorld.h"
 #include "hdtSkyrimSystem.h"
 
@@ -81,6 +82,7 @@ namespace hdt
 		float m_rotationSpeedLimit = 10.f;
 		bool m_unclampedResets = true;
 		float m_unclampedResetAngle = 120.0f;
+		DiscontinuitySettings m_discontinuity;
 		float m_2ndStepAverageProcessingTime = 0;
 		float m_averageSMPProcessingTimeInMainLoop = 0;
 		// Smoothed per-frame breakdown of the main-loop cost (ms), kept as members so the in-game menu's Perf

@@ -68,6 +68,12 @@ namespace hdt
 		w->m_rotationSpeedLimit = c.rotationSpeedLimit;
 		w->m_unclampedResets = c.unclampedResets;
 		w->m_unclampedResetAngle = c.unclampedResetAngle;
+		w->m_discontinuity.enabled = c.guardDiscontinuities;
+		w->m_discontinuity.teleportSpeedLimit = c.teleportSpeedLimit;
+		w->m_discontinuity.teleportTurnLimit = c.teleportTurnLimit;
+		w->m_discontinuity.poseSnapSpeedLimit = c.poseSnapSpeedLimit;
+		w->m_discontinuity.settleSpeedLimit = c.settleSpeedLimit;
+		w->m_discontinuity.settleTimeLimit = c.settleTimeLimit;
 		w->m_budgetMs = c.budgetMs;
 		w->m_useRealTime = c.useRealTime;
 		w->m_sampleSize = c.sampleSize;
@@ -118,6 +124,12 @@ namespace hdt
 		c.rotationSpeedLimit = w->m_rotationSpeedLimit;
 		c.unclampedResets = w->m_unclampedResets;
 		c.unclampedResetAngle = w->m_unclampedResetAngle;
+		c.guardDiscontinuities = w->m_discontinuity.enabled;
+		c.teleportSpeedLimit = w->m_discontinuity.teleportSpeedLimit;
+		c.teleportTurnLimit = w->m_discontinuity.teleportTurnLimit;
+		c.poseSnapSpeedLimit = w->m_discontinuity.poseSnapSpeedLimit;
+		c.settleSpeedLimit = w->m_discontinuity.settleSpeedLimit;
+		c.settleTimeLimit = w->m_discontinuity.settleTimeLimit;
 		c.budgetMs = w->m_budgetMs;
 		c.useRealTime = w->m_useRealTime;
 		c.sampleSize = w->m_sampleSize;
@@ -216,6 +228,12 @@ namespace hdt
 		LOG("smp.rotationSpeedLimit", w->m_rotationSpeedLimit);
 		LOG("smp.unclampedResets", w->m_unclampedResets);
 		LOG("smp.unclampedResetAngle", w->m_unclampedResetAngle);
+		LOG("smp.guardDiscontinuities", w->m_discontinuity.enabled);
+		LOG("smp.teleportSpeedLimit", w->m_discontinuity.teleportSpeedLimit);
+		LOG("smp.teleportTurnLimit", w->m_discontinuity.teleportTurnLimit);
+		LOG("smp.poseSnapSpeedLimit", w->m_discontinuity.poseSnapSpeedLimit);
+		LOG("smp.settleSpeedLimit", w->m_discontinuity.settleSpeedLimit);
+		LOG("smp.settleTimeLimit", w->m_discontinuity.settleTimeLimit);
 		LOG("smp.budgetMS", w->m_budgetMs);
 		LOG("smp.useRealTime", w->m_useRealTime);
 		LOG("smp.minCullingDistance", a->m_minCullingDistance);

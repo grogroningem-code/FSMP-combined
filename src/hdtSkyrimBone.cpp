@@ -89,6 +89,11 @@ namespace hdt
 		//}
 	}
 
+	btVector3 SkyrimBone::animatedRigOrigin() const
+	{
+		return convertNi(m_node->world).asTransform() * m_localToRig.getOrigin();
+	}
+
 	void SkyrimBone::writeTransform()
 	{
 		//if (m_rig.isStaticOrKinematicObject()) return;

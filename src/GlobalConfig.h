@@ -29,6 +29,13 @@ namespace hdt
 		float rotationSpeedLimit = 10.0f;
 		bool unclampedResets = true;
 		float unclampedResetAngle = 120.0f;
+		// Discontinuity guard (teleports, placements after loading, swapped poses); see hdtDiscontinuityGuard.h.
+		bool guardDiscontinuities = true;
+		float teleportSpeedLimit = 1500.0f;
+		float teleportTurnLimit = 2000.0f;
+		float poseSnapSpeedLimit = 1200.0f;
+		float settleSpeedLimit = 100.0f;
+		float settleTimeLimit = 1.5f;
 		bool useRealTime = false;
 		float minCullingDistance = 500.0f;
 		bool autoAdjustMaxSkeletons = true;

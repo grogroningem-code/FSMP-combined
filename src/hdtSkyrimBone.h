@@ -13,6 +13,9 @@ namespace hdt
 		void readTransform(float timeStep) override;
 		void writeTransform() override;
 
+		// Where the game's animation currently puts this bone's rigid body, in world space.
+		btVector3 animatedRigOrigin() const;
+
 		int m_depth;
 		RE::NiPointer<RE::NiNode> m_node;
 		RE::NiPointer<RE::NiNode> m_skeleton;

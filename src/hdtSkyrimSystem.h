@@ -3,6 +3,7 @@
 
 #include "hdtConvertNi.h"
 #include "hdtDefaultBBP.h"
+#include "hdtDiscontinuityGuard.h"
 #include "hdtSkinnedMesh/hdtConeTwistConstraint.h"
 #include "hdtSkinnedMesh/hdtGeneric6DofConstraint.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshSystem.h"
@@ -42,6 +43,13 @@ namespace hdt
 
 		// angular velocity damper
 		btQuaternion m_lastRootRotation;
+
+	private:
+		btTransform rootTransform() const;
+		const char* ownerName() const;
+		float absorbDiscontinuity(float timeStep);
+
+		DiscontinuityGuard m_discontinuityGuard;
 	};
 
 	class XMLReader;

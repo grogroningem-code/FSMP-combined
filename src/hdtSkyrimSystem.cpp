@@ -98,6 +98,9 @@ namespace hdt
 			newRoot = newRoot->parent;
 		}
 
+		// Built just now, or attached to another scene graph (cell change, 3D reload).
+		const bool fresh = !m_initialized || m_oldRoot != newRoot;
+
 		if (m_oldRoot != newRoot) {
 			timeStep = RESET_PHYSICS;
 		}
@@ -156,8 +159,67 @@ namespace hdt
 			}
 		}
 
+		if (timeStep > RESET_PHYSICS && !this->block_resetting) {
+			timeStep = absorbDiscontinuity(timeStep);
+		} else {
+			m_discontinuityGuard.restart(rootTransform());
+		}
+
+		if (fresh && SkyrimPhysicsWorld::get()->m_discontinuity.enabled) {
+			m_discontinuityGuard.settle();
+			logger::debug("physics on {} ({} bones) started, held at rest until the pose settles", ownerName(), m_bones.size());
+		}
+
 		m_oldRoot = hdt::make_nismart(newRoot);
 		return timeStep;
+	}
+
+	btTransform SkyrimSystem::rootTransform() const
+	{
+		return btTransform(convertNi(m_skeleton->world.rotate), convertNi(m_skeleton->world.translate));
+	}
+
+	const char* SkyrimSystem::ownerName() const
+	{
+		if (const auto owner = m_skeleton->GetUserData(); owner && owner->GetName()[0]) {
+			return owner->GetName();
+		}
+		return m_skeleton->parent ? m_skeleton->parent->name.c_str() : m_skeleton->name.c_str();
+	}
+
+	float SkyrimSystem::absorbDiscontinuity(float timeStep)
+	{
+		using Action = DiscontinuityGuard::Action;
+
+		const auto finding = m_discontinuityGuard.inspect(m_bones, rootTransform(), timeStep, SkyrimPhysicsWorld::get()->m_discontinuity);
+		if (finding.released) {
+			logger::debug("physics on {} ({} bones) released after {:.2f} s at rest (pose at {:.0f} units/s)", ownerName(), m_bones.size(), finding.heldFor, finding.poseSpeed);
+		}
+		if (finding.action == Action::kNone) {
+			return timeStep;
+		}
+
+		if (finding.action != Action::kHold) {
+			logger::debug(
+				"discontinuity on {} ({} bones): {} (step {:.1f} ms, root {:.0f} units/s, {:.0f} deg/s, pose {:.0f} units/s, {} of {} animated bones snapped)",
+				ownerName(),
+				m_bones.size(),
+				finding.action == Action::kRestart ? "restarted" : "carried",
+				timeStep * 1000.0f,
+				finding.rootSpeed,
+				finding.turnSpeed,
+				finding.poseSpeed,
+				finding.snappedBones,
+				finding.animatedBones);
+		}
+
+		m_lastRootRotation = convertNi(m_skeleton->world.rotate);
+		if (finding.action == Action::kCarried) {
+			return timeStep;
+		}
+
+		updateTransformUpDown(m_skeleton.get(), true);
+		return RESET_PHYSICS;
 	}
 
 	SkyrimSystemCreator::SkyrimSystemCreator()

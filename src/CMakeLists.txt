@@ -83,6 +83,8 @@ set(SOURCE_FILES
 	"${SOURCE_DIR}/hdtWorldCollider.h"
 	"${SOURCE_DIR}/WorldCollisionAPI.h"
 	"${SOURCE_DIR}/hdtSkyrimBody.h"
+	"${SOURCE_DIR}/hdtDiscontinuityGuard.cpp"
+	"${SOURCE_DIR}/hdtDiscontinuityGuard.h"
 	"${SOURCE_DIR}/hdtSkyrimBone.cpp"
 	"${SOURCE_DIR}/hdtSkyrimBone.h"
 	"${SOURCE_DIR}/hdtConvertNi.cpp"
