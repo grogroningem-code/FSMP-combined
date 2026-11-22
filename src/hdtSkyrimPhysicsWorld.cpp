@@ -585,7 +585,7 @@ namespace hdt
 
 		float interval = (m_useRealTime ? RE::BSTimer::GetSingleton()->realTimeDelta : RE::BSTimer::GetSingleton()->delta);
 
-		if (interval > FLT_EPSILON && !m_suspended && !m_systems.empty()) {
+		if (interval > FLT_EPSILON && !m_suspended && (!m_systems.empty() || !g_pausedWorldSystems.empty())) {
 			doUpdate(interval);
 		} else if (m_suspended && !m_loading) {
 			writeTransform();

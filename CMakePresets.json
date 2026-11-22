@@ -139,7 +139,7 @@
         "skyrim-runtimes"
       ],
       "name": "vs2026-windows",
-      "toolset": "v143"
+      "toolset": "v145"
     },
     {
       "architecture": {
@@ -157,7 +157,7 @@
         "skyrim-runtimes"
       ],
       "name": "vs2026-windows-avx",
-      "toolset": "v143"
+      "toolset": "v145"
     },
     {
       "architecture": {
@@ -175,7 +175,7 @@
         "skyrim-runtimes"
       ],
       "name": "vs2026-windows-avx2",
-      "toolset": "v143"
+      "toolset": "v145"
     },
     {
       "architecture": {
@@ -193,7 +193,7 @@
         "skyrim-runtimes"
       ],
       "name": "vs2026-windows-avx512",
-      "toolset": "v143"
+      "toolset": "v145"
     }
   ],
   "buildPresets": [
