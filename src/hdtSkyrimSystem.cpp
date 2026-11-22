@@ -167,7 +167,9 @@ namespace hdt
 			m_discontinuityGuard.restart(rootTransform());
 		}
 
-		if (fresh && SkyrimPhysicsWorld::get()->m_discontinuity.enabled) {
+		// A pose-preserving rebuild (Papyrus SwapPhysicsFile or ReloadPhysics, seat hug) sets block_resetting around this
+		// call; holding it at rest would wipe the pose that was just transferred.
+		if (fresh && !this->block_resetting && SkyrimPhysicsWorld::get()->m_discontinuity.enabled) {
 			m_discontinuityGuard.settle();
 			logger::debug("physics on {} ({} bones) started, held at rest until the pose settles", ownerName(), m_bones.size());
 		}
