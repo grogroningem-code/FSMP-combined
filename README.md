@@ -3,7 +3,8 @@
 A personal build of [Faster HDT-SMP](https://github.com/DaymareOn/hdtSMP64) 4.1.1 (FSMP) that puts several
 GPL-3.0 changes into one `hdtSMP64.dll`, since each of them ships its own copy of that file and only one can load.
 
-Work in progress: it compiles, but it has not been tested in game yet. There is no Nexus release.
+Work in progress: it compiles and passes the repository's tests, but it has not been tested in game yet. The `.pdb`
+file must ship next to the DLL: Banner Physics reads FSMP's field offsets from it. There is no Nexus release.
 
 ## What is in it
 
@@ -12,9 +13,11 @@ Work in progress: it compiles, but it has not been tested in game yet. There is 
 | Faster HDT-SMP 4.1.1 (commit e52ad96) | [DaymareOn/hdtSMP64](https://github.com/DaymareOn/hdtSMP64) | DaymareOn and contributors |
 | Settle 1.1.1: world-collision interface for seats and mounts, seated skirt hug | [Flob26/Settle-hdtSMP64](https://github.com/Flob26/Settle-hdtSMP64), branch `settle-guard` | Flob26 |
 | Clothing Clipping Fix: carries cloth through teleports, restarts it after pose swaps, holds new outfits at rest until the pose settles | [YoucefNabil/FSMP-Discontinuity-Guard](https://github.com/YoucefNabil/FSMP-Discontinuity-Guard) (merged through Settle's `settle-guard`) | Youcef |
+| No See No Bounce: optional culling of NPCs that ActorVisibility.dll reports hidden (`smp.actorVisibilityMode`), and of SMP banners out of view (`smp.cullNonActorSkeletons`); both off by default | [No See No Bounce](https://www.nexusmods.com/skyrimspecialedition/mods/197823), file "FSMP Fork Source AE" v3 | Dimshadow1 |
 | Isolate TBB loops run under the physics lock (deadlock crash) | upstream PR #484, unmerged | Alan Tse |
 | Drain the physics task queue on FrameEvent (step and setup race) | upstream PR #428, unmerged | DaymareOn |
 | Cache whether a skeleton is first person | upstream PR #317, unmerged | asdasdduck |
+| Merge fixes: resume paused banners when no other physics is running; no rest hold when a rebuild keeps the current pose (Papyrus SwapPhysicsFile, seat hug) | this repository | grogroningem-code |
 | Build with Visual Studio 2026 (MSVC 14.51) for the plugin and all vcpkg dependencies | upstream branch `vs2026`, plus `cmake/triplets/_pin_toolset.cmake` | DaymareOn, grogroningem-code |
 
 The commit history keeps every author. Upstream pins its dependencies to MSVC 14.44; this build uses 14.51 for
@@ -22,7 +25,7 @@ everything instead, which upstream has not tested.
 
 ## Building
 
-Same as upstream, with the VS 2026 presets: `cmake --preset vs2026-windows-avx2 -T v145
+Same as upstream, with the VS 2026 presets (they select MSVC 14.51, toolset v145): `cmake --preset vs2026-windows-avx2
 -DCompiledPluginsPath=<output folder> -DCOPY_OUTPUT=OFF`, then `cmake --build out/build/vs2026-windows-avx2
 --config Release`.
 
