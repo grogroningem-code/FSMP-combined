@@ -67,7 +67,10 @@ namespace hdt::seathug
 
 		// Rebuilds the actor's SMP armor items whose current physics path passes `want`, keeping poses.
 		// Same procedure as DynamicHDT.SwapPhysicsFile without the path change.
-		std::uint32_t rebuild(std::uint32_t formID, const std::function<bool(const std::string&)>& want, std::vector<std::string>& rebuilt)
+		// keepUnhugged (Settle 1.1.4): when turning the hug on, an item whose new system got no hug constraints
+		// (capes, cloaks, long skirts, anything the hug skips) keeps its ORIGINAL system untouched: rebuilding
+		// such items while the actor sits could leave them stretched (a guard's cape pulled into a long band).
+		std::uint32_t rebuild(std::uint32_t formID, const std::function<bool(const std::string&)>& want, std::vector<std::string>& rebuilt, bool keepUnhugged)
 		{
 			const auto& AM = hdt::ActorManager::instance();
 			auto guard = AM->lockGuard();
@@ -91,7 +94,26 @@ namespace hdt::seathug
 
 					auto renameMap = armor.renameMap;
 					auto system = SkyrimSystemCreator().createOrUpdateSystem(skeleton.npc.get(), armor.armorWorn.get(), &armor.physicsFile, std::move(renameMap), oldSystem.get());
-					if (system) {
+					if (system && oldSystem && keepUnhugged) {
+						bool hugged = false;
+						{
+							std::lock_guard l(g_lock);
+							auto it = g_actors.find(formID);
+							if (it != g_actors.end()) {
+								auto b = it->second.built.find(path);
+								hugged = b != it->second.built.end() && b->second.constraints > 0;
+								if (!hugged && b != it->second.built.end())
+									b->second.report += " (original physics kept)";
+							}
+						}
+						if (!hugged)
+							system = nullptr;  // discard the new system, put the old one back below
+					}
+					if (!system && oldSystem && keepUnhugged) {
+						oldSystem->block_resetting = true;
+						armor.setPhysics(oldSystem, wasActive);
+						oldSystem->block_resetting = false;
+					} else if (system) {
 						system->block_resetting = true;
 						if (oldSystem)
 							hdt::util::transferCurrentPosesBetweenSystems(oldSystem.get(), system.get());
@@ -196,6 +218,11 @@ namespace hdt::seathug
 			c->setAngularUpperLimit(zero);
 			for (int i = 0; i < 6; ++i)
 				c->setEquilibriumPoint(i, 0.f);
+			// the seat/horse collider stops pushing the locked cloth bone (a contact against a lock only shakes it)
+			if (!c->m_boneA->m_rig.isStaticOrKinematicObject())
+				c->m_boneA->m_rig.setUserIndex3(kHugFrozenBone);
+			if (!c->m_boneB->m_rig.isStaticOrKinematicObject())
+				c->m_boneB->m_rig.setUserIndex3(kHugFrozenBone);
 			++n;
 		}
 		return n;
@@ -248,7 +275,7 @@ namespace hdt::seathug
 		}
 
 		std::vector<std::string> rebuilt;
-		rebuild(actorFormID, want, rebuilt);
+		rebuild(actorFormID, want, rebuilt, params != nullptr);
 
 		std::uint32_t total = 0;
 		std::lock_guard l(g_lock);
@@ -399,6 +426,11 @@ namespace hdt
 				indexBone(b);
 			} else if (!b->m_rig.isStaticOrKinematicObject()) {
 				return nullptr;  // an outfit simulating the leg bone itself: leave it alone
+			} else {
+				// The item's own kinematic leg bone can still hold an unread transform here (seen with Sons of Skyrim
+				// SMP Reborn: origin, scale 1). The tie frames are built from m_currentTransform, so read it now, in the
+				// same reference pose the cloth bones were read in; otherwise the tie anchors thousands of units away.
+				b->readTransform(RESET_PHYSICS);
 			}
 			segBone[s][g] = b;
 			return b;

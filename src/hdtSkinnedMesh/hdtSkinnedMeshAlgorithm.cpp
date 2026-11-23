@@ -453,6 +453,8 @@ namespace hdt
 			auto rb1 = body1->m_skinnedBones[j].ptr;
 			if (rb0 == rb1)
 				continue;
+			if (worldPair && (body0->m_isWorldCollider ? rb1 : rb0)->m_rig.getUserIndex3() == kHugFrozenBone)
+				continue;  // Flobrim fork: frozen hug bone, the world collider leaves it alone
 
 			float invWeight = 1.0f / c->weight;
 

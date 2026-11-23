@@ -7,6 +7,12 @@
 namespace hdt
 {
 	class SkinnedMeshBody;
+
+	// Flobrim fork: m_rig user index 3 value of a cloth bone whose seated hug is frozen (locked to the leg).
+	// World colliders (seat, horse) leave such bones alone: the lock already holds them, and a contact
+	// pushing a locked bone only makes it shake. Set on freeze; the bones go away when the item is rebuilt.
+	inline constexpr int kHugFrozenBone = 0x5E7713;
+
 	_CRT_ALIGN(16)
 	struct SkinnedMeshBone :
 		public RE::BSIntrusiveRefCounted
