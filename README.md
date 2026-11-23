@@ -11,7 +11,8 @@ file must ship next to the DLL: Banner Physics reads FSMP's field offsets from i
 | Change | Source | Author |
 |---|---|---|
 | Faster HDT-SMP 4.1.1 (commit e52ad96) | [DaymareOn/hdtSMP64](https://github.com/DaymareOn/hdtSMP64) | DaymareOn and contributors |
-| Settle 1.1.1: world-collision interface for seats and mounts, seated skirt hug | [Flob26/Settle-hdtSMP64](https://github.com/Flob26/Settle-hdtSMP64), branch `settle-guard` | Flob26 |
+| Settle 1.2.0: world-collision interface for seats and mounts, seated skirt hug (1.1.4: unhugged items keep their physics while seated; 1.2.0: leg bone read before ties, colliders leave frozen hug bones alone) | [Flob26/Settle-hdtSMP64](https://github.com/Flob26/Settle-hdtSMP64), branch `settle-guard` | Flob26 |
+| Seated hug: an item hugged before a params update is always rebuilt (never kept with its leg ties), even if now skipped | this repository | grogroningem-code |
 | Clothing Clipping Fix: carries cloth through teleports, restarts it after pose swaps, holds new outfits at rest until the pose settles | [YoucefNabil/FSMP-Discontinuity-Guard](https://github.com/YoucefNabil/FSMP-Discontinuity-Guard) (merged through Settle's `settle-guard`) | Youcef |
 | No See No Bounce: optional culling of NPCs that ActorVisibility.dll reports hidden (`smp.actorVisibilityMode`), and of SMP banners out of view (`smp.cullNonActorSkeletons`); both off by default | [No See No Bounce](https://www.nexusmods.com/skyrimspecialedition/mods/197823), file "FSMP Fork Source AE" v3 | Dimshadow1 |
 | Isolate TBB loops run under the physics lock (deadlock crash) | upstream PR #484, unmerged | Alan Tse |

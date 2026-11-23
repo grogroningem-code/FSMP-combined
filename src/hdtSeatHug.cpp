@@ -70,7 +70,10 @@ namespace hdt::seathug
 		// keepUnhugged (Settle 1.1.4): when turning the hug on, an item whose new system got no hug constraints
 		// (capes, cloaks, long skirts, anything the hug skips) keeps its ORIGINAL system untouched: rebuilding
 		// such items while the actor sits could leave them stretched (a guard's cape pulled into a long band).
-		std::uint32_t rebuild(std::uint32_t formID, const std::function<bool(const std::string&)>& want, std::vector<std::string>& rebuilt, bool keepUnhugged)
+		// prevHugged (combined build): items hugged before this call. Their old system carries leg ties, so it is
+		// never kept; a params update that leaves such an item unhugged adopts the new, plain build instead.
+		std::uint32_t rebuild(std::uint32_t formID, const std::function<bool(const std::string&)>& want, std::vector<std::string>& rebuilt, bool keepUnhugged,
+			const std::unordered_set<std::string>& prevHugged)
 		{
 			const auto& AM = hdt::ActorManager::instance();
 			auto guard = AM->lockGuard();
@@ -94,7 +97,7 @@ namespace hdt::seathug
 
 					auto renameMap = armor.renameMap;
 					auto system = SkyrimSystemCreator().createOrUpdateSystem(skeleton.npc.get(), armor.armorWorn.get(), &armor.physicsFile, std::move(renameMap), oldSystem.get());
-					if (system && oldSystem && keepUnhugged) {
+					if (system && oldSystem && keepUnhugged && !prevHugged.contains(path)) {
 						bool hugged = false;
 						{
 							std::lock_guard l(g_lock);
@@ -113,6 +116,17 @@ namespace hdt::seathug
 						oldSystem->block_resetting = true;
 						armor.setPhysics(oldSystem, wasActive);
 						oldSystem->block_resetting = false;
+						if (prevHugged.contains(path)) {
+							// the rebuild failed and the old system still carries leg ties: mark the path hugged so
+							// turning the hug off rebuilds it plain
+							std::lock_guard l(g_lock);
+							auto it = g_actors.find(formID);
+							if (it != g_actors.end()) {
+								auto& r = it->second.built[path];
+								if (r.constraints == 0)
+									r = ItemResult{ 1, "rebuild failed, previous hug kept" };
+							}
+						}
 					} else if (system) {
 						system->block_resetting = true;
 						if (oldSystem)
@@ -235,6 +249,7 @@ namespace hdt::seathug
 
 		void (*log)(const char*) = nullptr;
 		std::function<bool(const std::string&)> want;
+		std::unordered_set<std::string> prevHugged;  // hugged before a params update: always rebuilt, never kept
 
 		{
 			std::lock_guard l(g_lock);
@@ -249,6 +264,9 @@ namespace hdt::seathug
 				for (std::uint32_t i = 0; skipPaths && i < skipCount; ++i)
 					if (skipPaths[i])
 						st.skip.insert(lower(skipPaths[i]));
+				for (auto& [p, r] : st.built)
+					if (r.constraints)
+						prevHugged.insert(p);
 				st.built.clear();
 				st.constraints.clear();
 				log = st.params.log;
@@ -258,7 +276,8 @@ namespace hdt::seathug
 				}
 				auto skip = st.skip;
 				auto noHug = g_noHug;
-				want = [skip, noHug](const std::string& p) { return !skip.contains(lower(p)) && !noHug.contains(p); };
+				// a previously hugged item is rebuilt even if it is now skipped, so its leg ties go away
+				want = [skip, noHug, prevHugged](const std::string& p) { return prevHugged.contains(p) || (!skip.contains(lower(p)) && !noHug.contains(p)); };
 			} else {
 				if (!st.on) {
 					g_actors.erase(actorFormID);
@@ -275,7 +294,7 @@ namespace hdt::seathug
 		}
 
 		std::vector<std::string> rebuilt;
-		rebuild(actorFormID, want, rebuilt, params != nullptr);
+		rebuild(actorFormID, want, rebuilt, params != nullptr, prevHugged);
 
 		std::uint32_t total = 0;
 		std::lock_guard l(g_lock);
